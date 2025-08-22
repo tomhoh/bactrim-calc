@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bactrim® (TMP‑SMX) IV Concentration Calculator — v4 (Bootstrap)</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    .badge-pill { border-radius: 50rem; }
+    .min-w-110 { min-width: 110px; }
+    .monosmall { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: .95rem; }
+    .small-muted { font-size: .9rem; color: #6c757d; }
+  </style>
+</head>
+<body>
+  <div class="container my-4">
+    <header class="mb-3">
+      <h1 class="h3 mb-1">Bactrim® (TMP‑SMX) IV — Concentration‑Dependent Stability Calculator <span class="text-secondary">v4</span></h1>
+      <p class="text-muted mb-0">Compute dose from patient height/weight or enter a dose directly. Choose diluent mode, see the on‑label use‑within time, and auto‑size volume. By default, dose calculations set the volume to target the <strong>6‑hour window</strong> (≤0.615 mg/mL TMP) in D5W; in NS mode, the longest configured window is used (off‑label).</p>
+    </header>
+
+    <!-- Patient-based dosing card -->
+    <div class="card shadow-sm mb-3">
+      <div class="card-body">
+        <h2 class="h5">Patient-based dose</h2>
+        <div class="row g-3 align-items-end">
+          <div class="col-md-2">
+            <label class="form-label">Sex</label>
+            <select id="sex" class="form-select">
+              <option value="M">Male</option>
+              <option value="F">Female</option>
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Height</label>
+            <div class="input-group">
+              <input id="height" type="number" min="0" step="0.1" class="form-control" placeholder="e.g., 170">
+              <select id="heightUnit" class="form-select" style="max-width:6.5rem">
+                <option value="cm">cm</option>
+                <option value="in">in</option>
+              </select>
+            </div>
+            <div class="small-muted">Used for IBW/AdjBW.</div>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Weight</label>
+            <div class="input-group">
+              <input id="weight" type="number" min="0" step="0.1" class="form-control" placeholder="e.g., 80">
+              <select id="weightUnit" class="form-select" style="max-width:6.5rem">
+                <option value="kg">kg</option>
+                <option value="lb">lb</option>
+              </select>
+            </div>
+            <div class="small-muted">TBW (actual body weight) input.</div>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Weight basis for dosing</label>
+            <select id="weightBasis" class="form-select">
+              <option value="TBW">TBW (actual)</option>
+              <option value="IBW">IBW (Devine)</option>
+              <option value="AdjBW">AdjBW = IBW + 0.4×(TBW−IBW)</option>
+            </select>
+            <div id="wbSummary" class="small-muted"></div>
+          </div>
+
+          <div class="col-md-4">
+            <label class="form-label">Dosing mode</label>
+            <select id="doseMode" class="form-select">
+              <option value="perday">mg/kg/day (TMP)</option>
+              <option value="perdose">mg/kg/dose (TMP)</option>
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Amount</label>
+            <div class="input-group">
+              <input id="mgPerKg" type="number" min="0" step="0.1" class="form-control" placeholder="e.g., 15">
+              <span class="input-group-text" id="mgPerKgUnit">mg/kg/day</span>
+            </div>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Doses per day</label>
+            <input id="dosesPerDay" type="number" min="1" step="1" class="form-control" placeholder="e.g., 3">
+          </div>
+
+          <div class="col-md-6">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="autoVol6h" checked>
+              <label class="form-check-label" for="autoVol6h">
+                After computing dose, <strong>auto‑set volume for longest window</strong> (D5W: 6 h at ≤0.615 mg/mL; NS mode: longest configured window).
+              </label>
+            </div>
+          </div>
+          <div class="col-md-6 d-grid d-md-flex justify-content-md-end gap-2">
+            <button class="btn btn-outline-primary" id="computeDoseBtn">Compute dose → set fields</button>
+            <button class="btn btn-outline-secondary" id="loadExampleBtn">Load example</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Core calculator card -->
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <div class="row g-3 align-items-end">
+          <div class="col-12">
+            <label class="form-label">Diluent mode</label>
+            <div class="d-flex gap-4">
+              <div class="form-check form-check-inline">
+                <input class="form-check-input" type="radio" name="mode" id="modeD5W" value="d5w" checked>
+                <label class="form-check-label" for="modeD5W">D5W — <strong>on‑label</strong> (fixed limits)</label>
+              </div>
+              <div class="form-check form-check-inline">
+                <input class="form-check-input" type="radio" name="mode" id="modeNS" value="ns">
+                <label class="form-check-label" for="modeNS">NS — <strong>off‑label</strong> (custom limits)</label>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-md-6">
+            <label for="dose" class="form-label">Dose (TMP, mg)</label>
+            <input id="dose" type="number" inputmode="decimal" min="0" step="1" class="form-control" placeholder="enter or compute above">
+          </div>
+          <div class="col-md-6">
+            <label for="vol" class="form-label">Final bag volume (mL)</label>
+            <input id="vol" type="number" inputmode="decimal" min="1" step="1" class="form-control" placeholder="enter or auto‑set">
+          </div>
+
+          <div class="col-12">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="includeDrugVol" checked>
+              <label class="form-check-label" for="includeDrugVol">Show <strong>diluent to add</strong> assuming concentrate 16 mg/mL (5 mL = 80 mg TMP)</label>
+            </div>
+          </div>
+
+          <div class="col-md-8">
+            <label for="target" class="form-label">Target stability window (for auto‑solve)</label>
+            <select id="target" class="form-select"></select>
+          </div>
+          <div class="col-md-4 d-grid d-md-block">
+            <button class="btn btn-outline-primary mt-3 mt-md-0" id="solveBtn" title="Set the minimum final volume to meet the chosen window">Auto‑solve volume</button>
+          </div>
+
+          <div class="col-12 d-flex gap-2">
+            <button class="btn btn-primary" id="calcBtn">Calculate</button>
+            <button class="btn btn-outline-secondary" id="resetBtn">Reset</button>
+          </div>
+
+          <div class="col-12">
+            <div id="out" class="alert d-none" role="alert"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- NS custom limits -->
+    <div id="nsPanel" class="card shadow-sm mt-3 d-none">
+      <div class="card-body">
+        <h2 class="h5 mb-3">NS mode (off‑label) — set your own limits</h2>
+        <div class="alert alert-info py-2">
+          <strong>Important:</strong> These limits are <strong>not</strong> from the manufacturer. Enter values per your institution’s policy or literature approved locally.
+        </div>
+        <div class="row g-3 align-items-end">
+          <div class="col-md-4">
+            <label class="form-label">Window A — use‑within (hours)</label>
+            <input id="nsH1" type="number" min="0" step="0.5" class="form-control" placeholder="e.g., 2">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Window A — limit (mg/mL TMP)</label>
+            <input id="nsL1" type="number" min="0" step="0.001" class="form-control" placeholder="e.g., 1.000">
+          </div>
+          <div class="col-md-4">
+            <div class="small text-muted">Example: 2 h at 1.000 mg/mL</div>
+          </div>
+
+          <div class="col-md-4">
+            <label class="form-label">Window B — use‑within (hours)</label>
+            <input id="nsH2" type="number" min="0" step="0.5" class="form-control" placeholder="e.g., 4">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Window B — limit (mg/mL TMP)</label>
+            <input id="nsL2" type="number" min="0" step="0.001" class="form-control" placeholder="e.g., 0.762">
+          </div>
+          <div class="col-md-4">
+            <div class="small text-muted">Example: 4 h at 0.762 mg/mL</div>
+          </div>
+
+          <div class="col-md-4">
+            <label class="form-label">Window C — use‑within (hours)</label>
+            <input id="nsH3" type="number" min="0" step="0.5" class="form-control" placeholder="e.g., 6">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Window C — limit (mg/mL TMP)</label>
+            <input id="nsL3" type="number" min="0" step="0.001" class="form-control" placeholder="e.g., 0.615">
+          </div>
+          <div class="col-md-4">
+            <div class="small text-muted">Example: 6 h at 0.615 mg/mL</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Suggestions -->
+    <div class="card shadow-sm mt-3">
+      <div class="card-body">
+        <h2 class="h5">Suggestions</h2>
+        <p class="text-muted mb-2">Minimum final volume to meet each window, with optional diluent to add (assuming concentrate 16 mg/mL).</p>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle">
+            <thead class="table-light">
+              <tr>
+                <th>Window</th>
+                <th>Limit (mg/mL)</th>
+                <th>Min final vol</th>
+                <th>Diluent to add*</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="suggestRows">
+              <tr><td colspan="5" class="text-muted">Run a calculation to see suggestions.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="small text-muted">*Shown only if “diluent to add” option is enabled.</div>
+      </div>
+    </div>
+
+    <!-- Notes -->
+    <div class="card shadow-sm mt-3">
+      <div class="card-body">
+        <h2 class="h5">Notes & disclaimers</h2>
+        <ul class="mb-2">
+          <li><strong>D5W (on‑label):</strong> Limits fixed by current labeling (per TMP mg/mL in final bag): ≤1.00 mg/mL = 2 h; ≤0.762 mg/mL = 4 h; ≤0.615 mg/mL = 6 h. Do not refrigerate; infuse over 60–90 minutes; discard if cloudy/crystals.</li>
+          <li><strong>NS (off‑label):</strong> Provide limits per your local policy; this tool performs the math only.</li>
+        </ul>
+        <p class="text-muted mb-0">This tool doesn’t replace clinical judgment. Verify against current product labeling and your institution’s policy.</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function(){
+      const D5W_LIMITS = [
+        {window:'2 h', hours:2, limit:1.000},
+        {window:'4 h', hours:4, limit:0.762},
+        {window:'6 h', hours:6, limit:0.615}
+      ];
+      const $ = sel => document.querySelector(sel);
+      const out = $('#out');
+      const suggestRows = $('#suggestRows');
+      const targetSel = $('#target');
+      const mgPerKg = $('#mgPerKg');
+      const mgPerKgUnit = $('#mgPerKgUnit');
+
+      function fmt(n, d=0){ return Number.isFinite(n) ? n.toFixed(d) : '—'; }
+      function fmtVol(n){ return Number.isFinite(n) ? Math.max(0, Math.round(n)) + ' mL' : '—'; }
+      function isNS(){ return document.getElementById('modeNS').checked; }
+
+      // Conversions
+      const cmToIn = cm => cm/2.54;
+      const inToCm = inch => inch*2.54;
+      const lbToKg = lb => lb*0.45359237;
+
+      function devineIBW(sex, heightIn){
+        const over60 = Math.max(0, heightIn - 60);
+        return (sex === 'M' ? 50 : 45.5) + 2.3*over60;
+      }
+      function adjBW(tbw, ibw){ return ibw + 0.4*(tbw - ibw); }
+
+      function readNSLimits(){
+        const ns = [];
+        const rows = [
+          {h: parseFloat(document.getElementById('nsH1').value), l: parseFloat(document.getElementById('nsL1').value)},
+          {h: parseFloat(document.getElementById('nsH2').value), l: parseFloat(document.getElementById('nsL2').value)},
+          {h: parseFloat(document.getElementById('nsH3').value), l: parseFloat(document.getElementById('nsL3').value)}
+        ];
+        rows.forEach(r => {
+          if (Number.isFinite(r.h) && r.h > 0 && Number.isFinite(r.l) && r.l > 0){
+            ns.push({window: r.h + ' h', hours:r.h, limit:r.l});
+          }
+        });
+        ns.sort((a,b)=>a.hours-b.hours);
+        return ns;
+      }
+      function getWindows(){ return isNS() ? readNSLimits() : D5W_LIMITS.slice(); }
+
+      function refreshTargetOptions(){
+        const wins = getWindows();
+        targetSel.innerHTML = '';
+        if (wins.length === 0){
+          const opt = document.createElement('option');
+          opt.value = '';
+          opt.textContent = '— define windows —';
+          targetSel.appendChild(opt);
+          targetSel.disabled = true;
+        } else {
+          wins.forEach((w, i)=>{
+            const opt = document.createElement('option');
+            opt.value = String(i);
+            opt.textContent = `${w.window} (≤ ${w.limit.toFixed(3)} mg/mL)`;
+            targetSel.appendChild(opt);
+          });
+          targetSel.disabled = false;
+        }
+      }
+
+      function classify(conc){
+        const wins = getWindows();
+        if (wins.length === 0) return {window:'N/A', type:'danger', msg:'No limits configured. Define windows first.'};
+        let best = null;
+        for (let i=0;i<wins.length;i++){
+          if (conc <= wins[i].limit) best = wins[i];
+        }
+        if (best){
+          const off = isNS() ? ' (off‑label)' : '';
+          const type = isNS() ? 'warning' : (best.hours>=6?'success':'warning');
+          return {window:best.window, type, msg:`≤${best.limit.toFixed(3)} mg/mL → use within ${best.window}${off}.`};
+        }
+        return {window:'too high', type:'danger', msg:`Too concentrated for the selected mode (>${wins[0].limit.toFixed(3)} mg/mL). Increase volume or lower dose.`};
+      }
+
+      function buildSuggestions(doseMg, includeDiluentVol){
+        const wins = getWindows();
+        suggestRows.innerHTML = '';
+        if (wins.length === 0){
+          suggestRows.innerHTML = `<tr><td colspan="5" class="text-muted">No limits defined for this mode.</td></tr>`;
+          return;
+        }
+        const drugVol = doseMg / 16;
+        wins.forEach(L => {
+          const minFinal = doseMg / L.limit;
+          const diluentToAdd = includeDiluentVol ? (minFinal - drugVol) : NaN;
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${L.window}${isNS() ? ' (off‑label)' : ''}</td>
+            <td>${L.limit.toFixed(3)}</td>
+            <td>${fmtVol(minFinal)}</td>
+            <td>${includeDiluentVol ? fmtVol(diluentToAdd) : '<span class="text-muted">—</span>'}</td>
+            <td><button class="btn btn-sm btn-outline-secondary" data-setvol="${Math.max(1, Math.round(minFinal))}">Set volume</button></td>
+          `;
+          suggestRows.appendChild(tr);
+        });
+        suggestRows.querySelectorAll('button[data-setvol]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const v = parseInt(btn.getAttribute('data-setvol'), 10);
+            const volInput = document.getElementById('vol');
+            volInput.value = String(v);
+            calculate();
+          });
+        });
+      }
+
+      function calculate(){
+        const doseMg = parseFloat(document.getElementById('dose').value);
+        const volMl  = parseFloat(document.getElementById('vol').value);
+        const includeDiluentVol = document.getElementById('includeDrugVol').checked;
+
+        if (!Number.isFinite(doseMg) || doseMg <= 0 || !Number.isFinite(volMl) || volMl <= 0){
+          out.className = 'alert alert-danger';
+          out.textContent = 'Enter a positive dose and volume.';
+          out.classList.remove('d-none');
+          suggestRows.innerHTML = `<tr><td colspan="5" class="text-muted">Run a calculation to see suggestions.</td></tr>`;
+          return;
+        }
+        const wins = getWindows();
+        if (wins.length === 0){
+          out.className = 'alert alert-danger';
+          out.innerHTML = 'No limits configured for this mode. <span class="text-muted">Define windows and try again.</span>';
+          out.classList.remove('d-none');
+          suggestRows.innerHTML = `<tr><td colspan="5" class="text-muted">No limits to suggest.</td></tr>`;
+          return;
+        }
+
+        const conc = doseMg / volMl;
+        const cls = classify(conc);
+
+        const drugVol = doseMg / 16;
+        const diluentToAdd = includeDiluentVol ? (volMl - drugVol) : NaN;
+
+        out.className = `alert alert-${cls.type}`;
+        out.innerHTML = `
+          <div class="d-flex flex-wrap gap-2 mb-2">
+            <span class="badge text-bg-${cls.type === 'success' ? 'success' : (cls.type === 'warning' ? 'warning' : 'danger')} badge-pill min-w-110 text-center">
+              ${cls.window === 'too high' ? 'Too concentrated' : ('Use within ' + cls.window + (isNS() ? ' (off‑label)' : ''))}
+            </span>
+            <span class="badge text-bg-secondary badge-pill monosmall">${conc.toFixed(3)} mg/mL TMP</span>
+            ${isNS() ? '<span class="badge text-bg-warning-subtle text-dark badge-pill">NS mode</span>' : '<span class="badge text-bg-info badge-pill">D5W mode</span>'}
+          </div>
+          <div class="text-muted mb-2">${cls.msg}</div>
+          <div class="row g-2">
+            <div class="col-md-3"><strong>Dose:</strong> ${fmt(doseMg,0)} mg TMP</div>
+            <div class="col-md-3"><strong>Final volume:</strong> ${fmt(volMl,0)} mL</div>
+            <div class="col-md-3"><strong>Concentrate volume*:</strong> ${includeDiluentVol ? fmt(drugVol,1) + ' mL' : '<span class="text-muted">hidden</span>'}</div>
+            <div class="col-md-3"><strong>Diluent to add*:</strong> ${includeDiluentVol ? fmt(Math.max(0, diluentToAdd),1) + ' mL' : '<span class="text-muted">hidden</span>'}</div>
+          </div>
+          <div class="small text-muted mt-1">*Assumes TMP concentrate 16 mg/mL (5 mL = 80 mg TMP).</div>
+        `;
+        out.classList.remove('d-none');
+        buildSuggestions(doseMg, includeDiluentVol);
+      }
+
+      function autoSolve(){
+        const doseMg = parseFloat(document.getElementById('dose').value);
+        if (!Number.isFinite(doseMg) || doseMg <= 0){
+          out.className = 'alert alert-danger';
+          out.textContent = 'Enter a positive dose first.';
+          out.classList.remove('d-none');
+          return;
+        }
+        const wins = getWindows();
+        if (wins.length === 0){
+          out.className = 'alert alert-danger';
+          out.textContent = 'No limits configured for this mode.';
+          out.classList.remove('d-none');
+          return;
+        }
+        if (targetSel.disabled || targetSel.value===''){
+          out.className = 'alert alert-danger';
+          out.textContent = 'Select a target window.';
+          out.classList.remove('d-none');
+          return;
+        }
+        const idx = parseInt(targetSel.value, 10);
+        if (!Number.isFinite(idx) || !wins[idx]){
+          out.className = 'alert alert-danger';
+          out.textContent = 'Invalid target window.';
+          out.classList.remove('d-none');
+          return;
+        }
+        const limit = wins[idx].limit;
+        const minFinal = doseMg / limit;
+        const volInput = document.getElementById('vol');
+        volInput.value = String(Math.max(1, Math.round(minFinal)));
+        calculate();
+      }
+
+      function togglePanels(){
+        const nsPanel = document.getElementById('nsPanel');
+        nsPanel.classList.toggle('d-none', !isNS());
+        refreshTargetOptions();
+      }
+
+      // --- Patient dosing helpers ---
+      function updateDoseUnitLabel(){
+        const mode = document.getElementById('doseMode').value;
+        mgPerKgUnit.textContent = mode === 'perday' ? 'mg/kg/day' : 'mg/kg/dose';
+      }
+
+      function computeDoseFromPatient(){
+        const sex = document.getElementById('sex').value;
+        let ht = parseFloat(document.getElementById('height').value);
+        const hUnit = document.getElementById('heightUnit').value;
+        let wt = parseFloat(document.getElementById('weight').value);
+        const wUnit = document.getElementById('weightUnit').value;
+        const basis = document.getElementById('weightBasis').value;
+        const mode = document.getElementById('doseMode').value;
+        const mgkg = parseFloat(document.getElementById('mgPerKg').value);
+        const nPerDay = parseInt(document.getElementById('dosesPerDay').value, 10);
+        const wbSummary = document.getElementById('wbSummary');
+
+        if (!Number.isFinite(ht) || ht<=0 || !Number.isFinite(wt) || wt<=0 || !Number.isFinite(mgkg) || mgkg<=0 || !Number.isFinite(nPerDay) || nPerDay<=0){
+          out.className = 'alert alert-danger';
+          out.textContent = 'Enter valid height, weight, dosing amount, and doses/day.';
+          out.classList.remove('d-none');
+          return;
+        }
+
+        const heightIn = hUnit==='cm' ? cmToIn(ht) : ht;
+        const tbwKg = wUnit==='lb' ? lbToKg(wt) : wt;
+        const ibwKg = devineIBW(sex, heightIn);
+        const adjKg = adjBW(tbwKg, ibwKg);
+        const basisKg = (basis==='TBW' ? tbwKg : (basis==='IBW' ? ibwKg : adjKg));
+
+        wbSummary.textContent = `TBW ${tbwKg.toFixed(1)} kg • IBW ${ibwKg.toFixed(1)} kg • AdjBW ${adjKg.toFixed(1)} kg → using ${basis}: ${basisKg.toFixed(1)} kg`;
+
+        let doseMg;
+        if (mode==='perday'){
+          doseMg = mgkg * basisKg / nPerDay; // per-dose mg
+        } else {
+          doseMg = mgkg * basisKg; // per-dose mg
+        }
+        doseMg = Math.round(doseMg);
+
+        // Populate dose field
+        document.getElementById('dose').value = String(doseMg);
+
+        // Auto-set volume to meet the longest window (D5W: 6h; NS: longest configured)
+        if (document.getElementById('autoVol6h').checked){
+          const wins = getWindows();
+          if (wins.length>0){
+            const longest = wins[wins.length-1];
+            const targetLimit = longest.limit;
+            const minFinal = doseMg / targetLimit;
+            document.getElementById('vol').value = String(Math.max(1, Math.round(minFinal)));
+          }
+        }
+
+        // Run calculation
+        calculate();
+      }
+
+      // Wire events
+      document.getElementById('calcBtn').addEventListener('click', calculate);
+      document.getElementById('solveBtn').addEventListener('click', autoSolve);
+      document.getElementById('resetBtn').addEventListener('click', () => {
+        ['dose','vol','height','weight','mgPerKg','dosesPerDay','nsH1','nsL1','nsH2','nsL2','nsH3','nsL3'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+        out.classList.add('d-none');
+        suggestRows.innerHTML = `<tr><td colspan="5" class="text-muted">Run a calculation to see suggestions.</td></tr>`;
+        document.getElementById('wbSummary').textContent='';
+      });
+      document.getElementById('modeD5W').addEventListener('change', togglePanels);
+      document.getElementById('modeNS').addEventListener('change', togglePanels);
+      ['nsH1','nsL1','nsH2','nsL2','nsH3','nsL3'].forEach(id=>{
+        const el = document.getElementById(id);
+        el.addEventListener('input', refreshTargetOptions);
+      });
+      document.getElementById('doseMode').addEventListener('change', updateDoseUnitLabel);
+      document.getElementById('computeDoseBtn').addEventListener('click', computeDoseFromPatient);
+      document.getElementById('loadExampleBtn').addEventListener('click', () => {
+        // Example: M, 170 cm, 80 kg, TBW, 15 mg/kg/day ÷ 3 doses
+        document.getElementById('sex').value = 'M';
+        document.getElementById('height').value = '170';
+        document.getElementById('heightUnit').value = 'cm';
+        document.getElementById('weight').value = '80';
+        document.getElementById('weightUnit').value = 'kg';
+        document.getElementById('weightBasis').value = 'TBW';
+        document.getElementById('doseMode').value = 'perday'; updateDoseUnitLabel();
+        document.getElementById('mgPerKg').value = '15';
+        document.getElementById('dosesPerDay').value = '3';
+        // Compute and set fields (will also auto-size to longest window volume)
+        document.getElementById('autoVol6h').checked = true;
+        computeDoseFromPatient();
+      });
+
+      // Initialize
+      togglePanels(); // no defaults for dose/volume
+      updateDoseUnitLabel();
+    })();
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
